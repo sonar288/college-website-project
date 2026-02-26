@@ -1,0 +1,308 @@
+# ============================================================
+# CloudFormation Template – 3-Tier Architecture with NAT + RDS
+#
+# This infrastructure creates:
+# 1. One VPC
+# 2. Six Subnets
+#    - 2 Public (Web)
+#    - 2 Private (Application)
+#    - 2 Private (Database)
+# 3. Internet Gateway
+# 4. NAT Gateway for private subnets
+# 5. EC2 Web Server (Public)
+# 6. EC2 Application Server (Private)
+# 7. RDS MySQL (Single-AZ, Free Tier)
+# ============================================================
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: 3-Tier Architecture with NAT Gateway and RDS MySQL (Secure Version)
+
+Resources:
+
+# ------------------------
+# VPC
+# ------------------------
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+# ------------------------
+# Internet Gateway
+# ------------------------
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+# ------------------------
+# Public Subnets
+# ------------------------
+  WebPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  WebPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+# ------------------------
+# Private Subnets (App)
+# ------------------------
+  AppPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  AppPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+# ------------------------
+# Private Subnets (DB)
+# ------------------------
+  DBPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.5.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  DBPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.6.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+# ------------------------
+# Route Tables
+# ------------------------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachIGW
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+# ------------------------
+# NAT Gateway
+# ------------------------
+  NatEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: AttachIGW
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref WebPublicSubnet1
+
+  PrivateRouteToNat:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+# ------------------------
+# Route Table Associations
+# ------------------------
+  WebSubnetAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WebPublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  WebSubnetAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WebPublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  AppSubnetAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppPrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  AppSubnetAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppPrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  DBSubnetAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  DBSubnetAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+# ------------------------
+# Security Groups
+# ------------------------
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH from Internet
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP from Web Server and SSH from Web Server
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+
+        # Allow HTTP from Web Server
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref WebSecurityGroup
+
+        # Allow SSH from Web Server
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref WebSecurityGroup
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL from App Server and My IP
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref AppSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 116.74.196.241/32
+
+# ------------------------
+# EC2 Instances
+# ------------------------
+  WebInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.small
+      ImageId: ami-051a31ab2f4d498f5   # Amazon Linux 2 (update per region)
+      SubnetId: !Ref WebPublicSubnet1
+      SecurityGroupIds:
+        - !Ref WebSecurityGroup
+      KeyName: awsPub
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y nginx php php-fpm
+          systemctl enable nginx
+          systemctl start nginx
+         
+      Tags:
+        - Key: Name
+          Value: Web_Server
+
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.small
+      ImageId: ami-051a31ab2f4d498f5
+      SubnetId: !Ref AppPrivateSubnet1
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+      KeyName: awsPub
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y nginx php php-fpm
+          systemctl enable nginx
+          systemctl start nginx
+
+          yum install mariadb105
+      Tags:
+        - Key: Name
+          Value: app_server
+
+# ------------------------
+# RDS Subnet Group
+# ------------------------
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for MySQL RDS
+      SubnetIds:
+        - !Ref DBPrivateSubnet1
+        - !Ref DBPrivateSubnet2
+
+# ------------------------
+# RDS Instance
+# ------------------------
+  StudentDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: student-database
+      Engine: mysql
+      EngineVersion: "8.0"
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      DBName: studentdb
+      MasterUsername: admin
+      MasterUserPassword: Admin12345
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      MultiAZ: false
+      BackupRetentionPeriod: 0
