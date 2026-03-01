@@ -32,7 +32,7 @@
 
 ## 📖 Description
 
-This project is a hands-on guide to building and deploying a **complete college website infrastructure on AWS** using **CloudFormation** and **EC2**. Instead of manually configuring resources through the AWS Console, we define infrastructure as code and provision networking, compute, and security components in an automated and repeatable way.
+This project is a hands-on guide to building and deploying a **College website infrastructure on AWS** using **CloudFormation** and **EC2**. Instead of manually configuring resources through the AWS Console, we define infrastructure as code and provision networking, compute, and security components in an automated and repeatable way.
 
 The guide covers:
 - Custom VPC with public and private subnets
@@ -48,7 +48,8 @@ The guide covers:
 
 ## 🏗️ Architecture Overview
 
-<!-- INSERT IMAGE: Full architecture diagram (3-tier with ALB, ASG, RDS, S3) -->
+![Architecture](images/3TierArchitecture.png)
+
 
 A public-facing **Application Load Balancer** distributes incoming traffic to **Web Tier EC2 instances** in public subnets. NGINX servers handle frontend requests and serve the college website. Static assets (images, media) are stored in **Amazon S3**.
 
@@ -128,13 +129,13 @@ Database Tier – Amazon RDS MySQL (Private Subnets)
 ```
 campus-cloudcraft/
 │
-├── website/                           # Static website files
-│   ├── index.html
-│   ├── style.css
-│   └── register.php
+├── index.html                           # Static website files
+├── style.css   
+├── register.php  
+│  
 │
-├── infrastructure/
-│   └── cloudformation-template.yaml  # Full IaC template
+├── vpc.yml # Full IaC template
+│     
 │
 └── README.md
 ```
@@ -148,15 +149,10 @@ The **entire infrastructure** can be deployed automatically using the CloudForma
 ```bash
 aws cloudformation create-stack \
   --stack-name campus-cloudcraft \
-  --template-body file://infrastructure/cloudformation-template.yaml \
+  --template-body file:\\vpc.yml \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-> For a full understanding of the architecture, follow the manual setup steps below.
-
-<!-- INSERT IMAGE: CloudFormation stack creation in AWS Console -->
-
----
 
 ## Part 1 – Networking & Security
 
@@ -184,7 +180,6 @@ DNS Resolution: Enabled
 
 > Enable **Auto-assign Public IP** for both public subnets.
 
-<!-- INSERT IMAGE: Subnets list in AWS Console -->
 
 ### Step 3: Route Tables
 
@@ -218,7 +213,6 @@ Add route in Private Route Table:
 Destination: 0.0.0.0/0  →  Target: NAT Gateway
 ```
 
-<!-- INSERT IMAGE: NAT Gateway setup in AWS Console -->
 
 ### Security Groups
 
@@ -487,7 +481,8 @@ sudo nginx -t && sudo systemctl restart nginx
 
 Create AMIs from both the Web Server and App Server instances. These serve as blueprints for Auto Scaling.
 
-<!-- INSERT IMAGE: AMI creation in EC2 Console -->
+![ami](images/AMI.png)
+
 
 ### Step 2: Create Target Groups
 
@@ -516,11 +511,14 @@ SG:       HTTP:80 from college-web-sg
 Listener: HTTP:80 → App Target Group
 ```
 
-<!-- INSERT IMAGE: Internal ALB healthy targets -->
+![LB](images/LB.png)
+
 
 ### Step 5: Create Launch Templates
 
 Create a Launch Template for each tier using their respective AMIs. Auto Scaling uses these as blueprints to provision new instances on demand.
+![LaunchTemp](images/launcTemp.png)
+
 
 ### Step 6: Create Auto Scaling Groups
 
@@ -540,7 +538,8 @@ ALB Target Group: App Target Group
 Desired: 2  |  Min: 2  |  Max: 4
 ```
 
-<!-- INSERT IMAGE: Auto Scaling Group showing healthy instances -->
+![Alt text](images/asg.png)
+
 
 ---
 
@@ -614,6 +613,17 @@ The system is **highly available, fault-tolerant, scalable, and production-ready
 
 ---
 
+![front-page](images/frontpage1.png)
+
+---
+
+![register-page](images/regester.png)
+
+---
+![Databse](images/database.png)
+
+---
+
 ## 🧹 Cleanup
 
 To avoid ongoing AWS charges, delete all resources when done:
@@ -637,5 +647,6 @@ aws cloudformation delete-stack --stack-name campus-cloudcraft
 ⭐ If this project helped you, give it a star and share the blog post!
 
 ---
+
 
 *Built with ❤️ for the cloud community*
